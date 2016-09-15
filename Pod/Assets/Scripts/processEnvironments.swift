@@ -6,24 +6,24 @@ import Foundation
 let envKey = "KZBEnvironments"
 let overrideKey = "KZBEnvOverride"
 
-func validateEnvSettings(envSettings: NSDictionary?, prependMessage: NSString? = nil) -> Bool {
+func validateEnvSettings(_ envSettings: [String: Any]?, prependMessage: String? = nil) -> Bool {
     if envSettings == nil {
         return false
     }
     
-    var settings = envSettings! as! Dictionary<String, AnyObject>
+    var settings = envSettings!
     let allowedEnvs = settings[envKey] as! [String]
     
-    settings.removeValueForKey(envKey)
+    settings.removeValue(forKey:envKey)
     
     var missingOptions = [String : [String]]()
     
     for (name, values) in settings {
         let variable = name as String
-        let envValues = values as! [String: AnyObject]
+        let envValues = values as! [String: Any]
         
         let notConfiguredOptions = allowedEnvs.filter {
-            return envValues.indexForKey($0) == nil
+            return envValues.index(forKey:$0) == nil
         }
         
         if notConfiguredOptions.count > 0 {
@@ -42,11 +42,11 @@ func validateEnvSettings(envSettings: NSDictionary?, prependMessage: NSString? =
     return missingOptions.count == 0
 }
 
-func filterEnvSettings(entries: NSDictionary, forEnv env: String, prependMessage: String? = nil) -> NSDictionary {
-    var settings = entries as! Dictionary<String, AnyObject>
+func filterEnvSettings(_ entries: [String: Any], forEnv env: String, prependMessage: String? = nil) -> [String: Any] {
+    var settings = entries
     settings[envKey] = [env]
     for (name, values) in entries {
-        let variable = name as! String
+        let variable = name
         if let envValues = values as? [String: AnyObject] {
             if let allowedValue: AnyObject = envValues[env] {
                 settings[variable] = [env: allowedValue]
@@ -64,10 +64,10 @@ func filterEnvSettings(entries: NSDictionary, forEnv env: String, prependMessage
 }
 
 
-func processSettings(settingsPath: String, availableEnvs:[String], allowedEnv: String? = nil) -> Bool {
+func processSettings(_ settingsPath: String, availableEnvs:[String], allowedEnv: String? = nil) -> Bool {
     var settingsPath = settingsPath
     let preferenceKey = "PreferenceSpecifiers"
-    settingsPath = (settingsPath as NSString).stringByAppendingPathComponent("Root.plist") as String
+    settingsPath = settingsPath.appending("/Root.plist")
     
     if let settings = NSMutableDictionary(contentsOfFile: settingsPath) {
         if var existing = settings[preferenceKey] as? [AnyObject] {
@@ -82,7 +82,7 @@ func processSettings(settingsPath: String, availableEnvs:[String], allowedEnv: S
             }
             
             //! only add env switch if there isnt allowedEnv override
-            var updatedPreferences = existing as [AnyObject]
+            var updatedPreferences = existing as [Any]
             if allowedEnv == nil {
                 updatedPreferences.append(
                     [ "Type" : "PSMultiValueSpecifier",
@@ -95,21 +95,21 @@ func processSettings(settingsPath: String, availableEnvs:[String], allowedEnv: S
             }
             settings[preferenceKey] = updatedPreferences
             print("Updating settings at \(settingsPath)")
-            return settings.writeToFile(settingsPath, atomically: true)
+            return settings.write(toFile:settingsPath, atomically: true)
         }
     }
     return false
 }
 
-func processEnvs(bundledPath: String, sourcePath: String, settingsPath: String, allowedEnv: String? = nil, dstPath: String? = nil) -> Bool {
-    let settings = NSDictionary(contentsOfFile: bundledPath)
-    let availableEnvs = (settings as! [String:AnyObject])[envKey] as! [String]
+func processEnvs(_ bundledPath: String, sourcePath: String, settingsPath: String, allowedEnv: String? = nil, dstPath: String? = nil) -> Bool {
+    let settings = NSDictionary(contentsOfFile: bundledPath)! as! [String: Any]
+    let availableEnvs = settings[envKey] as! [String]
     
     if validateEnvSettings(settings, prependMessage: "\(sourcePath):1:") {
         if let filterEnv = allowedEnv {
-            let productionSettings = filterEnvSettings(settings!, forEnv: filterEnv, prependMessage: "\(sourcePath):1:")
-            
-            productionSettings.writeToFile(dstPath ?? bundledPath, atomically: true)
+            let productionSettings = filterEnvSettings(settings, forEnv: filterEnv, prependMessage: "\(sourcePath):1:")
+            let dict = NSDictionary(dictionary: productionSettings)
+            dict.write(toFile:dstPath ?? bundledPath, atomically: true)
         }
         
         let settingsAdjusted = processSettings(settingsPath, availableEnvs: availableEnvs, allowedEnv: allowedEnv)
@@ -122,16 +122,16 @@ func processEnvs(bundledPath: String, sourcePath: String, settingsPath: String, 
     return false
 }
 
-let count = Process.arguments.count
+let count = CommandLine.arguments.count
 if count == 1 || count > 5 {
     print("\(#file):\(#line): Received \(count) arguments, Proper usage: processEnvironments.swift -- [bundledPath] [srcPath] [settingsPath] [allowedEnv]")
     exit(1)
 }
 
-let path = Process.arguments[1]
-let srcPath = Process.arguments[2]
-let settingsPath = Process.arguments[3]
-let allowedEnv: String? = (count != 5 ? nil : Process.arguments[4])
+let path = CommandLine.arguments[1]
+let srcPath = CommandLine.arguments[2]
+let settingsPath = CommandLine.arguments[3]
+let allowedEnv: String? = (count != 5 ? nil : CommandLine.arguments[4])
 
 if (processEnvs(path, sourcePath: srcPath, settingsPath: settingsPath, allowedEnv:allowedEnv) == true)
 {
